@@ -1,34 +1,50 @@
 package com.example.chatllm
 
 import android.content.Context
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.chatllm.ui.theme.ChatLLMTheme
 import kotlinx.coroutines.delay
 
+// 定义消息类型
+sealed class MessageContent {
+    data class TextMessage(val text: String) : MessageContent()
+    data class ImageMessage(val imageUri: Uri) : MessageContent()
+    data class TextWithImageMessage(val text: String, val imageUri: Uri) : MessageContent() // 新增：文字和图片的组合消息
+}
+
 class MainActivity : ComponentActivity() {
-    private val messages = mutableStateListOf<Pair<Boolean, String>>() // 创建一个可变的消息列表
+    // 修改消息数据结构，支持不同类型的消息
+    private val messages = mutableStateListOf<Pair<Boolean, MessageContent>>() // 创建一个可变的消息列表
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,7 +82,7 @@ class MainActivity : ComponentActivity() {
                 state = listState // 使用 listState 来控制滚动
             ) {
                 items(messages) { message ->
-                    MessageBubble(isUserMessage = message.first, message = message.second)
+                    MessageBubble(isUserMessage = message.first, content = message.second)
                 }
             }
             // 输入控制区
@@ -80,25 +96,83 @@ class MainActivity : ComponentActivity() {
         var botMessage by remember { mutableStateOf("") } // 机器人的消息
         var isSending by remember { mutableStateOf(false) } // 发送状态
         var userMessage by remember { mutableStateOf("") } // 保存用户的消息
+        var selectedImageUri by remember { mutableStateOf<Uri?>(null) } // 保存用户选择的图片URI
         
         // 获取当前上下文和焦点管理器
         val context = LocalContext.current
         val focusManager = LocalFocusManager.current
         
+        // 图片选择器
+        val imagePickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetContent()
+        ) { uri: Uri? ->
+            uri?.let {
+                // 保存选择的图片URI，但不立即发送
+                selectedImageUri = it
+            }
+        }
+        
         Row(modifier = modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // 图片选择按钮
+            Box {
+                IconButton(onClick = {
+                    imagePickerLauncher.launch("image/*")
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Photo,
+                        contentDescription = "选择图片",
+                        tint = if (selectedImageUri != null) MaterialTheme.colorScheme.primary else Color.Gray
+                    )
+                }
+                // 如果已选择图片，显示一个标记
+                if (selectedImageUri != null) {
+                    Badge(
+                        modifier = Modifier.align(Alignment.TopEnd),
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ) {
+                        Text("1")
+                    }
+                }
+            }
+            
+            // 文本输入框
             TextField(
                 value = text,
                 onValueChange = { text = it }, // 更新状态变量
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("输入消息...") }
             )
+            
+            // 发送按钮
             Button(onClick = { 
-                if (text.isNotBlank()) { // 发送非空消息
+                if (text.isNotBlank() || selectedImageUri != null) { // 发送非空消息或有图片
                     userMessage = text // 保存用户的消息
-                    messages.add(Pair(true, text)) // 添加用户消息到列表
-                    botMessage = "" // 清空机器人的消息
-                    isSending = true // 设置发送状态
-                    messages.add(Pair(false, botMessage)) // 添加机器人的空消息气泡
+                    
+                    // 根据是否有图片选择不同的发送方式
+                    if (selectedImageUri != null) {
+                        if (text.isNotBlank()) {
+                            // 发送文字和图片的组合消息
+                            messages.add(Pair(true, MessageContent.TextWithImageMessage(text, selectedImageUri!!)))
+                            // 机器人回复相同的消息
+                            botMessage = ""
+                            isSending = true
+                            messages.add(Pair(false, MessageContent.TextWithImageMessage("", selectedImageUri!!)))
+                        } else {
+                            // 只发送图片
+                            messages.add(Pair(true, MessageContent.ImageMessage(selectedImageUri!!)))
+                            // 机器人回复相同的图片
+                            messages.add(Pair(false, MessageContent.ImageMessage(selectedImageUri!!)))
+                        }
+                        // 清空选择的图片
+                        selectedImageUri = null
+                    } else {
+                        // 只发送文字
+                        messages.add(Pair(true, MessageContent.TextMessage(text)))
+                        botMessage = ""
+                        isSending = true
+                        messages.add(Pair(false, MessageContent.TextMessage(botMessage)))
+                    }
+                    
                     text = "" // 清空输入框
                     
                     // 隐藏键盘
@@ -108,12 +182,20 @@ class MainActivity : ComponentActivity() {
                 Text("发送")
             }
         }
+        
         // 启动协程逐字显示机器人的回复
         if (isSending) {
             LaunchedEffect(userMessage) {
                 for (char in userMessage) {
                     botMessage += char
-                    messages[messages.size - 1] = Pair(false, botMessage) // 更新机器人的消息气泡
+                    // 更新机器人的消息气泡
+                    val lastMessage = messages[messages.size - 1]
+                    if (lastMessage.second is MessageContent.TextMessage) {
+                        messages[messages.size - 1] = Pair(false, MessageContent.TextMessage(botMessage))
+                    } else if (lastMessage.second is MessageContent.TextWithImageMessage) {
+                        val imageUri = (lastMessage.second as MessageContent.TextWithImageMessage).imageUri
+                        messages[messages.size - 1] = Pair(false, MessageContent.TextWithImageMessage(botMessage, imageUri))
+                    }
                     delay(100) // 每个字符之间的延迟
                 }
                 isSending = false // 重置发送状态
@@ -122,7 +204,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun MessageBubble(isUserMessage: Boolean, message: String) {
+    fun MessageBubble(isUserMessage: Boolean, content: MessageContent) {
         val backgroundColor = if (isUserMessage) Color(0xFFdcf8c6) else Color.White
         val borderColor = if (isUserMessage) Color(0xFFd3f0b5) else Color(0xFFE0E0E0)
 
@@ -139,12 +221,45 @@ class MainActivity : ComponentActivity() {
                     .wrapContentHeight() // 自适应高度
                     .padding(8.dp) // 使气泡自动适应消息长度
             ) {
-                Text(text = message, modifier = Modifier.padding(8.dp), fontSize = 16.sp)
+                when (content) {
+                    is MessageContent.TextMessage -> {
+                        Text(text = content.text, modifier = Modifier.padding(8.dp), fontSize = 16.sp)
+                    }
+                    is MessageContent.ImageMessage -> {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(content.imageUri)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = "图片消息",
+                            modifier = Modifier
+                                .size(200.dp)
+                                .padding(8.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                    is MessageContent.TextWithImageMessage -> {
+                        Column {
+                            if (content.text.isNotBlank()) {
+                                Text(text = content.text, modifier = Modifier.padding(8.dp), fontSize = 16.sp)
+                            }
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(content.imageUri)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = "图片消息",
+                                modifier = Modifier
+                                    .size(200.dp)
+                                    .padding(8.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    }
+                }
             }
         }
     }
-
-
 }
 
 //@Composable
