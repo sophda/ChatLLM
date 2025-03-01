@@ -10,11 +10,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -23,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -45,6 +48,7 @@ sealed class MessageContent {
 class MainActivity : ComponentActivity() {
     // 修改消息数据结构，支持不同类型的消息
     private val messages = mutableStateListOf<Pair<Boolean, MessageContent>>() // 创建一个可变的消息列表
+    private var isTyping by mutableStateOf(false) // 机器人是否正在打字
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,10 +88,65 @@ class MainActivity : ComponentActivity() {
                 items(messages) { message ->
                     MessageBubble(isUserMessage = message.first, content = message.second)
                 }
+                
+                // 如果机器人正在打字，显示加载动画
+                if (isTyping) {
+                    item {
+                        TypingIndicator()
+                    }
+                }
             }
             // 输入控制区
             InputControl(modifier = Modifier.fillMaxWidth())
         }
+    }
+    
+    @Composable
+    fun TypingIndicator() {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .background(color = Color.White, shape = RoundedCornerShape(12.dp))
+                    .border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(3) { index ->
+                        LoadingDot(delay = index * 300)
+                    }
+                }
+            }
+        }
+    }
+    
+    @Composable
+    fun LoadingDot(delay: Int) {
+        val infiniteTransition = rememberInfiniteTransition(label = "loading")
+        val scale by infiniteTransition.animateFloat(
+            initialValue = 0.6f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(500, delayMillis = delay),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "scale"
+        )
+        
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .scale(scale)
+                .background(Color.Gray, CircleShape)
+        )
     }
 
     @Composable
@@ -156,6 +215,7 @@ class MainActivity : ComponentActivity() {
                             // 机器人回复相同的消息
                             botMessage = ""
                             isSending = true
+                            isTyping = true // 设置机器人正在打字
                             messages.add(Pair(false, MessageContent.TextWithImageMessage("", selectedImageUri!!)))
                         } else {
                             // 只发送图片
@@ -170,6 +230,7 @@ class MainActivity : ComponentActivity() {
                         messages.add(Pair(true, MessageContent.TextMessage(text)))
                         botMessage = ""
                         isSending = true
+                        isTyping = true // 设置机器人正在打字
                         messages.add(Pair(false, MessageContent.TextMessage(botMessage)))
                     }
                     
@@ -199,6 +260,7 @@ class MainActivity : ComponentActivity() {
                     delay(100) // 每个字符之间的延迟
                 }
                 isSending = false // 重置发送状态
+                isTyping = false // 机器人打字结束
             }
         }
     }
