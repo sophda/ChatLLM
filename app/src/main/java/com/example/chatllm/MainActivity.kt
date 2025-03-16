@@ -19,17 +19,20 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,6 +40,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.chatllm.ui.theme.ChatLLMTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // 定义消息类型
 sealed class MessageContent {
@@ -45,10 +49,25 @@ sealed class MessageContent {
     data class TextWithImageMessage(val text: String, val imageUri: Uri) : MessageContent() // 新增：文字和图片的组合消息
 }
 
+// 用户信息数据类
+//data class UserInfo(
+//    val name: String,
+//    val email: String,
+//    val avatarResId: Int? = null,
+//    val avatarUri: Uri? = null
+//)
+
 class MainActivity : ComponentActivity() {
     // 修改消息数据结构，支持不同类型的消息
     private val messages = mutableStateListOf<Pair<Boolean, MessageContent>>() // 创建一个可变的消息列表
     private var isTyping by mutableStateOf(false) // 机器人是否正在打字
+    
+    // 模拟用户信息
+    private val userInfo = UserInfo(
+        name = "张三",
+        email = "zhangsan@example.com",
+        avatarResId = R.drawable.ic_launcher_foreground
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,13 +76,124 @@ class MainActivity : ComponentActivity() {
         setContent { 
             ChatLLMTheme { 
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        // 左侧聊天主界面
-                        ChatMessages(modifier = Modifier.weight(0.7f))
-                        // 右侧在线状态/设置
-                    }
+                    MainScreen(userInfo)
                 }
             }
+        }
+    }
+    
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun MainScreen(userInfo: UserInfo) {
+        val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+        val scope = rememberCoroutineScope()
+        
+        // 侧边栏
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                SidebarContent(userInfo)
+            }
+        ) {
+            // 主界面
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = { Text("ChatLLM") },
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                // 打开侧边栏
+                                scope.launch {
+                                    if (drawerState.isClosed) {
+                                        drawerState.open()
+                                    } else {
+                                        drawerState.close()
+                                    }
+                                }
+                            }) {
+                                Icon(Icons.Default.Menu, contentDescription = "菜单")
+                            }
+                        }
+                    )
+                }
+            ) { paddingValues ->
+                Box(modifier = Modifier.padding(paddingValues)) {
+                    // 聊天主界面
+                    ChatMessages(modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+    }
+    
+    @Composable
+    fun UserInfoPanel(userInfo: UserInfo) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // 用户头像
+            if (userInfo.avatarResId != null) {
+                Image(
+                    painter = painterResource(id = userInfo.avatarResId),
+                    contentDescription = "用户头像",
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                )
+            } else if (userInfo.avatarUri != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(userInfo.avatarUri)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "用户头像",
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                // 默认头像
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = userInfo.name.first().toString(),
+                        color = Color.White,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 用户名
+            Text(
+                text = userInfo.name,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            // 用户邮箱
+            Text(
+                text = userInfo.email,
+                fontSize = 14.sp,
+                color = Color.Gray
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 
@@ -212,10 +342,10 @@ class MainActivity : ComponentActivity() {
                         if (text.isNotBlank()) {
                             // 发送文字和图片的组合消息
                             messages.add(Pair(true, MessageContent.TextWithImageMessage(text, selectedImageUri!!)))
-                            // 机器人回复相同的消息
+                            // 设置机器人正在打字
                             botMessage = ""
                             isSending = true
-                            isTyping = true // 设置机器人正在打字
+                            isTyping = true
                             messages.add(Pair(false, MessageContent.TextWithImageMessage("", selectedImageUri!!)))
                         } else {
                             // 只发送图片
@@ -228,9 +358,10 @@ class MainActivity : ComponentActivity() {
                     } else {
                         // 只发送文字
                         messages.add(Pair(true, MessageContent.TextMessage(text)))
+                        // 设置机器人正在打字
                         botMessage = ""
                         isSending = true
-                        isTyping = true // 设置机器人正在打字
+                        isTyping = true
                         messages.add(Pair(false, MessageContent.TextMessage(botMessage)))
                     }
                     
@@ -247,7 +378,17 @@ class MainActivity : ComponentActivity() {
         // 启动协程逐字显示机器人的回复
         if (isSending) {
             LaunchedEffect(userMessage) {
-                for (char in userMessage) {
+                // 使用 NativeInterface 获取回复
+                val response = try {
+                    // 尝试使用真实的C++接口
+                    NativeInterface.sendMessageToCpp(userMessage)
+                } catch (e: UnsatisfiedLinkError) {
+                    // 如果本地库未加载，使用模拟回复
+                    NativeInterface.getMockResponse(userMessage)
+                }
+                
+                // 逐字显示回复
+                for (char in response) {
                     botMessage += char
                     // 更新机器人的消息气泡
                     val lastMessage = messages[messages.size - 1]
@@ -257,7 +398,7 @@ class MainActivity : ComponentActivity() {
                         val imageUri = (lastMessage.second as MessageContent.TextWithImageMessage).imageUri
                         messages[messages.size - 1] = Pair(false, MessageContent.TextWithImageMessage(botMessage, imageUri))
                     }
-                    delay(100) // 每个字符之间的延迟
+                    delay(50) // 每个字符之间的延迟
                 }
                 isSending = false // 重置发送状态
                 isTyping = false // 机器人打字结束
