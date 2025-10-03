@@ -1,6 +1,7 @@
 package com.example.chatllm
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -41,6 +42,7 @@ import coil.request.ImageRequest
 import com.example.chatllm.ui.theme.ChatLLMTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.lang.annotation.Native
 
 // 定义消息类型
 sealed class MessageContent {
@@ -61,7 +63,6 @@ class MainActivity : ComponentActivity() {
     // 修改消息数据结构，支持不同类型的消息
     private val messages = mutableStateListOf<Pair<Boolean, MessageContent>>() // 创建一个可变的消息列表
     private var isTyping by mutableStateOf(false) // 机器人是否正在打字
-    
     // 模拟用户信息
     private val userInfo = UserInfo(
         name = "张三",
@@ -72,14 +73,34 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         Log.d("MainActivity", "MainActivity onCreate called") // 调试信息
-        setContent { 
-            ChatLLMTheme { 
+        setContent {
+            ChatLLMTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     MainScreen(userInfo)
                 }
             }
         }
+        permission().callpermission(this);
+        NativeInterface.initModel();
+
+//        setContent {
+//            ChatLLMTheme {
+//                Surface (modifier = Modifier.fillMaxSize()) {
+//                    testIntent()
+//                }
+//            }
+//        }
+    }
+    @Composable
+    fun testIntent() {
+        val context = LocalContext.current
+
+        Button(onClick = {
+            val intent = Intent(context, Test::class.java)
+            context.startActivity(intent)
+        }) { }
     }
     
     @OptIn(ExperimentalMaterial3Api::class)
@@ -99,7 +120,7 @@ class MainActivity : ComponentActivity() {
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = { Text("ChatLLM") },
+                        title = { Text("♥纳西妲♥") },
                         navigationIcon = {
                             IconButton(onClick = {
                                 // 打开侧边栏
@@ -381,7 +402,7 @@ class MainActivity : ComponentActivity() {
                 // 使用 NativeInterface 获取回复
                 val response = try {
                     // 尝试使用真实的C++接口
-                    NativeInterface.sendMessageToCpp(userMessage)
+                    NativeInterface.getreply(userMessage)
                 } catch (e: UnsatisfiedLinkError) {
                     // 如果本地库未加载，使用模拟回复
                     NativeInterface.getMockResponse(userMessage)
@@ -463,6 +484,17 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+
+
+    @Preview(showBackground = true)
+    @Composable
+    fun GreetingPreview() {
+        MainScreen(userInfo);
+    }
+
+
+
 }
 
 //@Composable
@@ -473,10 +505,5 @@ class MainActivity : ComponentActivity() {
 //    )
 //}
 //
-//@Preview(showBackground = true)
-//@Composable
-//fun GreetingPreview() {
-//    ChatLLMTheme {
-//        Greeting("Android")
-//    }
-//}
+
+

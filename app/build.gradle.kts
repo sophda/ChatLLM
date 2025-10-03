@@ -18,6 +18,14 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        
+        // 配置 CMake
+//        externalNativeBuild {
+//            cmake {
+//                cppFlags += "-std=c++17"
+//                arguments += "-DANDROID_STL=c++_shared"
+//            }
+//        }
     }
 
     buildTypes {
@@ -47,6 +55,14 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    
+    // 配置 CMake 路径
+//    externalNativeBuild {
+//        cmake {
+//            path = file("src/main/cpp/CMakeLists.txt")
+//            version = "3.22.1"
+//        }
+//    }
 }
 
 dependencies {
